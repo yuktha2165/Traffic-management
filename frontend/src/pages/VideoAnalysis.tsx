@@ -146,6 +146,8 @@ export const VideoAnalysis: React.FC<VideoAnalysisProps> = ({
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
       setError(null);
+      setRecentEvents([]);
+      setFlowTimeSeries([]);
       setIsCompleted(false);
       setLiveTracks([]);
     }
@@ -170,6 +172,9 @@ export const VideoAnalysis: React.FC<VideoAnalysisProps> = ({
   const handleStartLiveAnalysis = () => {
     if (!videoId) return;
     setError(null);
+    setRecentEvents([]);
+    setFlowTimeSeries([]);
+    setLiveTracks([]);
     setIsCompleted(false);
     setIsAnalyzing(true);
 
@@ -206,7 +211,18 @@ export const VideoAnalysis: React.FC<VideoAnalysisProps> = ({
         }
 
         if (data.events && data.events.length > 0) {
-          setRecentEvents(prev => [...data.events, ...prev].slice(0, 10));
+          setRecentEvents((prev) => {
+            const seen = new Set(prev.map((event) =>
+              `${event.event_type}:${event.track_id ?? 'traffic'}:${event.frame_idx ?? event.timestamp}`
+            ));
+            const freshEvents = data.events.filter((event: any) => {
+              const key = `${event.event_type}:${event.track_id ?? 'traffic'}:${event.frame_idx ?? event.timestamp}`;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            return [...freshEvents, ...prev].slice(0, 10);
+          });
         }
 
         // Add to time series flow chart
@@ -221,23 +237,21 @@ export const VideoAnalysis: React.FC<VideoAnalysisProps> = ({
       } else if (data.type === 'completed') {
         setIsAnalyzing(false);
         setIsCompleted(true);
-      } else if (data.error) {
-        setError(data.error);
+      } else if (data.type === 'error' || data.error) {
+        setError(data.error || 'Live analysis failed. Please retry.');
         setIsAnalyzing(false);
       }
     });
 
     liveWsRef.current = ws;
 
-    setTimeout(() => {
-      ws.sendCommand({
-        action: 'start',
-        confidence: confidenceThreshold,
-        interval: detectionInterval,
-        pixels_per_meter: pixelsPerMeter !== '' ? Number(pixelsPerMeter) : null,
-        direction: expectedDirection
-      });
-    }, 150);
+    ws.sendCommand({
+      action: 'start',
+      confidence: confidenceThreshold,
+      interval: detectionInterval,
+      pixels_per_meter: pixelsPerMeter !== '' ? Number(pixelsPerMeter) : null,
+      direction: expectedDirection
+    });
 
     onAnalysisStarted(videoId);
   };
@@ -521,13 +535,13 @@ export const VideoAnalysis: React.FC<VideoAnalysisProps> = ({
                       <div 
                         key={idx} 
                         className={`p-2.5 rounded-lg border flex items-start space-x-2 transition ${
-                          evt.event_type === 'WRONG_WAY' || evt.severity === 'HIGH'
+                          evt.event_type === 'WRONG_WAY' || evt.severity === 'HIGH' || evt.severity === 'CRITICAL'
                             ? 'bg-red-500/10 border-red-500/30'
                             : 'bg-[#0c1624] border-[#192c43]'
                         }`}
                       >
                         <AlertTriangle className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${
-                          evt.event_type === 'WRONG_WAY' || evt.severity === 'HIGH' ? 'text-red-400' : 'text-amber-400'
+                          evt.event_type === 'WRONG_WAY' || evt.severity === 'HIGH' || evt.severity === 'CRITICAL' ? 'text-red-400' : 'text-amber-400'
                         }`} />
                         <div className="flex-1 min-w-0">
                           <p className="text-slate-200 font-bold text-[11px] leading-snug">

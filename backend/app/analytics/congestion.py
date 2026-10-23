@@ -13,11 +13,16 @@ class CongestionEngine:
         valid_speeds = [t.speed for t in active_tracks if t.speed is not None]
         avg_speed = sum(valid_speeds) / len(valid_speeds) if valid_speeds else None
 
-        # Congestion Heuristic Evaluation
-        if occupancy >= 30.0 or (avg_speed is not None and avg_speed < 18.0 and vehicle_count >= 8):
+        # Large or spurious boxes can inflate occupancy, so require a meaningful
+        # number of simultaneous vehicles before classifying traffic congestion.
+        if vehicle_count >= 8 and (
+            occupancy >= 30.0 or (avg_speed is not None and avg_speed < 18.0)
+        ):
             congestion_level = "HEAVY"
             alert = True
-        elif occupancy >= 18.0 or (avg_speed is not None and avg_speed < 30.0 and vehicle_count >= 5):
+        elif vehicle_count >= 5 and (
+            occupancy >= 18.0 or (avg_speed is not None and avg_speed < 30.0)
+        ):
             congestion_level = "MODERATE"
             alert = False
         else:

@@ -4,14 +4,14 @@ from typing import List, Dict, Any, Tuple, Optional, Set
 from app.tracking.track import Track
 
 OPPOSITE_DIRECTIONS = {
-    "EAST": ["WEST", "NORTH_WEST", "SOUTH_WEST"],
-    "WEST": ["EAST", "NORTH_EAST", "SOUTH_EAST"],
-    "NORTH": ["SOUTH", "SOUTH_EAST", "SOUTH_WEST"],
-    "SOUTH": ["NORTH", "NORTH_EAST", "NORTH_WEST"],
-    "NORTH_EAST": ["SOUTH_WEST", "SOUTH", "WEST"],
-    "SOUTH_WEST": ["NORTH_EAST", "NORTH", "EAST"],
-    "NORTH_WEST": ["SOUTH_EAST", "SOUTH", "EAST"],
-    "SOUTH_EAST": ["NORTH_WEST", "NORTH", "WEST"]
+    "EAST": ["WEST"],
+    "WEST": ["EAST"],
+    "NORTH": ["SOUTH"],
+    "SOUTH": ["NORTH"],
+    "NORTH_EAST": ["SOUTH_WEST"],
+    "SOUTH_WEST": ["NORTH_EAST"],
+    "NORTH_WEST": ["SOUTH_EAST"],
+    "SOUTH_EAST": ["NORTH_WEST"]
 }
 
 class ViolationDetector:
@@ -29,6 +29,7 @@ class ViolationDetector:
         self.restricted_zone = restricted_zone or []
         self.reported_wrong_way: Set[int] = set()
         self.reported_zone_violations: Set[int] = set()
+        self.wrong_way_streaks: Dict[int, int] = {}
 
     def process_frame_violations(self, active_tracks: List[Track], frame_idx: int, timestamp_str: str) -> List[Dict[str, Any]]:
         events = []
@@ -39,6 +40,11 @@ class ViolationDetector:
             # 1. Check Wrong-Way Movement
             if track.track_id not in self.reported_wrong_way:
                 if len(track.trajectory) >= 5 and track.direction in opp_dirs:
+                    self.wrong_way_streaks[track.track_id] = self.wrong_way_streaks.get(track.track_id, 0) + 1
+                else:
+                    self.wrong_way_streaks.pop(track.track_id, None)
+
+                if self.wrong_way_streaks.get(track.track_id, 0) >= 5:
                     self.reported_wrong_way.add(track.track_id)
                     events.append({
                         "event_type": "WRONG_WAY",

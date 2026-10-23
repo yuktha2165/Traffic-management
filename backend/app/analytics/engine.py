@@ -33,12 +33,14 @@ class AnalyticsEngine:
         self.time_series_metrics: List[Dict[str, Any]] = []
         self.all_events: List[Dict[str, Any]] = []
         self.last_congestion_status: str = "NORMAL"
+        self.congestion_alert_active = False
 
     def process_frame(
         self,
         active_tracks: List[Track],
         frame_idx: int,
-        total_frames: int
+        total_frames: int,
+        frame_size: Optional[Tuple[int, int]] = None
     ) -> Dict[str, Any]:
         """
         Process single frame telemetry for all active tracks and update aggregate metrics.
@@ -53,7 +55,7 @@ class AnalyticsEngine:
         self.counter.process_tracks(active_tracks)
 
         # 3. Density and Congestion
-        density_data = self.density_estimator.calculate_density(active_tracks)
+        density_data = self.density_estimator.calculate_density(active_tracks, frame_size)
         congestion_data = self.congestion_engine.evaluate(density_data, active_tracks)
         self.last_congestion_status = str(congestion_data["level"])
 
@@ -64,7 +66,7 @@ class AnalyticsEngine:
         timestamp_str = f"{mins:02d}:{secs:02d}"
 
         new_events = self.violation_detector.process_frame_violations(active_tracks, frame_idx, timestamp_str)
-        if congestion_data["is_alert"] and not any(e["event_type"] == "CONGESTION" for e in self.all_events[-10:]):
+        if congestion_data["is_alert"] and not self.congestion_alert_active:
             new_events.append({
                 "event_type": "CONGESTION",
                 "severity": "MEDIUM",
@@ -75,6 +77,7 @@ class AnalyticsEngine:
                 "message": f"Heavy traffic congestion detected ({density_data['occupancy_percentage']}% occupancy, {density_data['vehicle_count']} active vehicles)",
                 "lane": "All Lanes"
             })
+            self.congestion_alert_active = bool(congestion_data["is_alert"])
 
         self.all_events.extend(new_events)
 

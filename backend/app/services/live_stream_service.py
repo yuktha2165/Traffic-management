@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 import logging
 from typing import Dict, Any, Optional
-from app.detection.rtdetr_detector import RTDETRDetector
 from app.tracking.tracker import MultiObjectTracker
 from app.tracking.track import Track
 from app.analytics.speed import estimate_speed_kmh, assign_lane_and_direction
@@ -14,6 +13,8 @@ logger = logging.getLogger("traffic_app")
 
 class LiveStreamProcessor:
     def __init__(self, pixels_per_meter: float = 15.0, fps: float = 30.0, frame_skip: int = settings.FRAME_SKIP):
+        from app.detection.rtdetr_detector import RTDETRDetector
+
         self.detector = RTDETRDetector()
         self.tracker = MultiObjectTracker()
         self.pixels_per_meter = pixels_per_meter
@@ -151,6 +152,8 @@ class VideoFileLiveAnalyzer:
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 720
 
         from app.analytics.engine import AnalyticsEngine
+        from app.detection.rtdetr_detector import RTDETRDetector
+
         self.detector = RTDETRDetector(confidence_threshold=confidence_threshold)
         self.tracker = MultiObjectTracker(confidence_threshold=confidence_threshold)
         self.analytics_engine = AnalyticsEngine(
@@ -202,7 +205,12 @@ class VideoFileLiveAnalyzer:
         for t in active_tracks:
             self.all_tracked_vehicles[t.track_id] = t
 
-        telemetry = self.analytics_engine.process_frame(active_tracks, current_idx, self.total_frames)
+        telemetry = self.analytics_engine.process_frame(
+            active_tracks,
+            current_idx,
+            self.total_frames,
+            frame_size=(self.width, self.height)
+        )
 
         tracks_payload = []
         for t in active_tracks:

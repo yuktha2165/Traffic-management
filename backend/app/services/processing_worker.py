@@ -8,7 +8,6 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
 from app.config import settings
-from app.detection.rtdetr_detector import RTDETRDetector
 from app.tracking.tracker import MultiObjectTracker
 from app.analytics.engine import AnalyticsEngine
 from app.services.video_service import extract_video_metadata, draw_frame_overlays, remux_to_web_mp4
@@ -93,6 +92,8 @@ async def process_video_background_task(
     repo = await get_repository()
 
     try:
+        from app.detection.rtdetr_detector import RTDETRDetector
+
         meta = extract_video_metadata(video_path)
         total_frames = meta["total_frames"]
         fps = meta["fps"]
@@ -170,7 +171,7 @@ async def process_video_background_task(
                 active_tracks = tracker.propagate_skipped_frame(frame_idx)
                 for t in active_tracks:
                     all_tracked_vehicles[t.track_id] = t
-                analytics_engine.process_frame(active_tracks, frame_idx, total_frames)
+                analytics_engine.process_frame(active_tracks, frame_idx, total_frames, frame_size=(width, height))
 
             frame_idx += 1
             fps_frame_count += 1
@@ -182,7 +183,7 @@ async def process_video_background_task(
                     active_tracks = tracker.update(f_dets, f_idx)
                     for t in active_tracks:
                         all_tracked_vehicles[t.track_id] = t
-                    analytics_engine.process_frame(active_tracks, f_idx, total_frames)
+                    analytics_engine.process_frame(active_tracks, f_idx, total_frames, frame_size=(width, height))
 
                 batch_frames.clear()
                 batch_indices.clear()
@@ -218,7 +219,7 @@ async def process_video_background_task(
                 active_tracks = tracker.update(f_dets, f_idx)
                 for t in active_tracks:
                     all_tracked_vehicles[t.track_id] = t
-                analytics_engine.process_frame(active_tracks, f_idx, total_frames)
+                analytics_engine.process_frame(active_tracks, f_idx, total_frames, frame_size=(width, height))
 
         cap.release()
 
@@ -320,7 +321,12 @@ async def generate_processed_video_background_task(
             else:
                 active_tracks = tracker.propagate_skipped_frame(frame_idx)
 
-            telemetry = analytics_engine.process_frame(active_tracks, frame_idx, total_frames)
+            telemetry = analytics_engine.process_frame(
+                active_tracks,
+                frame_idx,
+                total_frames,
+                frame_size=(width, height)
+            )
 
             overlay = draw_frame_overlays(
                 frame=frame,

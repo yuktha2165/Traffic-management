@@ -5,6 +5,7 @@ from app.analytics.direction import estimate_direction
 from app.analytics.speed import SpeedEstimator
 from app.analytics.density import DensityEstimator
 from app.analytics.congestion import CongestionEngine
+from app.analytics.violations import ViolationDetector
 
 def test_vehicle_counter():
     line = [(100.0, 0.0), (100.0, 500.0)] # Vertical line at x = 100
@@ -64,3 +65,63 @@ def test_density_and_congestion():
     congestion_engine = CongestionEngine()
     result = congestion_engine.evaluate(density, tracks)
     assert result["level"] in ["MODERATE", "HEAVY"]
+
+
+def test_congestion_alert_requires_multiple_vehicles():
+    engine = CongestionEngine()
+    single_vehicle = [
+        Track(class_name="car", bbox=[0.0, 0.0, 768.0, 432.0], confidence=0.9, frame_idx=0)
+    ]
+
+    result = engine.evaluate(
+        {"vehicle_count": 1, "occupancy_percentage": 100.0},
+        single_vehicle
+    )
+
+    assert result["level"] == "NORMAL"
+    assert result["is_alert"] is False
+
+
+def test_density_ignores_frame_filling_false_positive_box():
+    estimator = DensityEstimator()
+    track = Track(
+        class_name="car",
+        bbox=[-1.0, 0.0, 769.0, 432.0],
+        confidence=0.9,
+        frame_idx=0
+    )
+
+    result = estimator.calculate_density([track], frame_size=(768, 432))
+
+    assert result["occupancy_percentage"] == 0.0
+    assert result["status"] == "LOW"
+
+
+def test_diagonal_motion_does_not_trigger_cardinal_wrong_way_alert():
+    detector = ViolationDetector(expected_direction="EAST")
+    track = Track(class_name="car", bbox=[0.0, 0.0, 20.0, 20.0], confidence=0.9, frame_idx=0)
+    track.direction = "NORTH_WEST"
+    for frame_idx in range(5):
+        track.trajectory.append((float(frame_idx), 0.0, frame_idx))
+
+    events = [
+        detector.process_frame_violations([track], frame_idx, "00:00")
+        for frame_idx in range(5)
+    ]
+
+    assert not any(event["event_type"] == "WRONG_WAY" for frame_events in events for event in frame_events)
+
+
+def test_opposite_direction_alert_requires_sustained_motion():
+    detector = ViolationDetector(expected_direction="EAST")
+    track = Track(class_name="car", bbox=[0.0, 0.0, 20.0, 20.0], confidence=0.9, frame_idx=0)
+    track.direction = "WEST"
+    for frame_idx in range(5):
+        track.trajectory.append((float(frame_idx), 0.0, frame_idx))
+
+    events = [
+        detector.process_frame_violations([track], frame_idx, "00:00")
+        for frame_idx in range(5)
+    ]
+
+    assert sum(event["event_type"] == "WRONG_WAY" for frame_events in events for event in frame_events) == 1

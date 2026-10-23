@@ -48,9 +48,26 @@ export const VideoPlayerWithOverlay: React.FC<VideoPlayerWithOverlayProps> = ({
   const [selectedTrack, setSelectedTrack] = useState<any | null>(null);
   const [customIdInput, setCustomIdInput] = useState<string>('');
   const [hoveredTrackId, setHoveredTrackId] = useState<number | null>(null);
+  const [layoutRevision, setLayoutRevision] = useState(0);
   const lastSyncRef = useRef<number>(0);
 
   const resolvedVideoUrl = videoUrl || (videoId ? api.getVideoFileUrl(videoId) : '');
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const video = videoRef.current;
+    if (!container || !video) return;
+
+    const updateLayout = () => setLayoutRevision((revision) => revision + 1);
+    const observer = new ResizeObserver(updateLayout);
+    observer.observe(container);
+    video.addEventListener('loadedmetadata', updateLayout);
+
+    return () => {
+      observer.disconnect();
+      video.removeEventListener('loadedmetadata', updateLayout);
+    };
+  }, [videoRef]);
 
   // Render transparent overlay canvas with exact object-contain letterbox calibration
   useEffect(() => {
@@ -302,7 +319,7 @@ export const VideoPlayerWithOverlay: React.FC<VideoPlayerWithOverlayProps> = ({
       ctx.restore();
     });
 
-  }, [tracks, countingLine, lanePolygons, nativeWidth, nativeHeight, customVehicleIds, hoveredTrackId]);
+  }, [tracks, countingLine, lanePolygons, nativeWidth, nativeHeight, customVehicleIds, hoveredTrackId, layoutRevision]);
 
   const togglePlayPause = () => {
     const video = videoRef.current;

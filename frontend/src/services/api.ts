@@ -7,9 +7,8 @@ export const api = {
   async uploadVideo(file: File): Promise<{ success: boolean; video_id: string; metadata: VideoMetadata }> {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await axios.post(`${API_BASE}/videos/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    // Let the browser/Axios add the multipart boundary to Content-Type.
+    const res = await axios.post(`${API_BASE}/videos/upload`, formData);
     return res.data;
   },
 
@@ -160,6 +159,14 @@ export const api = {
     const wsUrl = `${protocol}//${window.location.host}${API_BASE}/videos/${videoId}/live-analysis/ws`;
 
     let ws: WebSocket | null = new WebSocket(wsUrl);
+    const pendingCommands: any[] = [];
+    let intentionallyClosed = false;
+
+    ws.onopen = () => {
+      while (ws && ws.readyState === WebSocket.OPEN && pendingCommands.length > 0) {
+        ws.send(JSON.stringify(pendingCommands.shift()));
+      }
+    };
 
     ws.onmessage = (event) => {
       try {
@@ -172,16 +179,27 @@ export const api = {
 
     ws.onerror = (err) => {
       console.warn('Live Analysis WS error:', err);
+      onMessage({ error: 'Live analysis connection failed. Confirm the backend is running, then retry.' });
+    };
+
+    ws.onclose = (event) => {
+      if (!intentionallyClosed && event.code !== 1000) {
+        onMessage({ error: 'Live analysis connection closed unexpectedly. Please retry.' });
+      }
     };
 
     return {
       sendCommand: (cmd: any) => {
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify(cmd));
+        } else if (ws && ws.readyState === WebSocket.CONNECTING) {
+          pendingCommands.push(cmd);
         }
       },
       close: () => {
         if (ws) {
+          intentionallyClosed = true;
+          pendingCommands.length = 0;
           ws.close();
           ws = null;
         }

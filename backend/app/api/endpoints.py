@@ -386,6 +386,14 @@ async def live_analysis_websocket(websocket: WebSocket, video_id: str):
         pass
     except Exception as e:
         logger.error(f"Live analysis WebSocket error for {video_id}: {e}")
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "error": f"Live analysis failed: {e}"
+            })
+            await websocket.close(code=1011)
+        except Exception:
+            pass
     finally:
         if analyzer is not None:
             analyzer.close()
